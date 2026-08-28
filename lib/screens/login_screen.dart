@@ -1,6 +1,6 @@
 // ============================================================
 // ARQUIVO: screens/login_screen.dart
-// FUNÇÃO: Tela inicial de autenticação do usuário.
+// FUNÇÃO: Tela inicial de autenticação do usuário com a API.
 // ============================================================
 
 import 'package:flutter/material.dart';
@@ -23,12 +23,28 @@ class _LoginScreenState extends State<LoginScreen> {
   final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
 
+  // Estado de carregamento da requisição
+  bool _isLoading = false;
+
   // ── Função de login ─────────────────────────────────────────
-  void _login() {
-    final success = Provider.of<AppState>(context, listen: false).login(
-      _usernameController.text,
-      _passwordController.text,
-    );
+  Future<void> _login() async {
+    final username = _usernameController.text.trim();
+    final password = _passwordController.text;
+
+    if (username.isEmpty || password.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Preencha o login e a senha')),
+      );
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    final appState = Provider.of<AppState>(context, listen: false);
+    final success = await appState.login(username, password);
+
+    if (!mounted) return;
+    setState(() => _isLoading = false);
 
     if (success) {
       // Sucesso: Vai para a tela do feed (substituindo a de login).
@@ -37,9 +53,12 @@ class _LoginScreenState extends State<LoginScreen> {
         MaterialPageRoute(builder: (context) => const FeedScreen()),
       );
     } else {
-      // Erro: Exibe notificação de falha no login.
+      // Erro: Exibe mensagem amigável de falha retornada pela API.
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Login ou senha incorretos')),
+        SnackBar(
+          content: Text(appState.lastErrorMessage ?? 'Login ou senha incorretos'),
+          backgroundColor: Colors.redAccent,
+        ),
       );
     }
   }
@@ -99,8 +118,17 @@ class _LoginScreenState extends State<LoginScreen> {
 
               // ── Botão Entrar ───────────────────────────────────
               ElevatedButton(
-                onPressed: _login,
-                child: const Text('Entrar'),
+                onPressed: _isLoading ? null : _login,
+                child: _isLoading
+                    ? const SizedBox(
+                        height: 20,
+                        width: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Text('Entrar'),
               ),
 
               const SizedBox(height: 16),
