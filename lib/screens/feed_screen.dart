@@ -1,7 +1,8 @@
 // ============================================================
 // ARQUIVO: screens/feed_screen.dart
 // FUNÇÃO: Tela principal que exibe o feed de publicações em
-//         duas abas: "Seguindo" e "Geral".
+//         duas abas: "Seguindo" e "Geral", com suporte a
+//         atualização por gesto de arrastar para baixo (pull-to-refresh).
 // ============================================================
 
 import 'package:flutter/material.dart';
@@ -29,6 +30,17 @@ class _FeedScreenState extends State<FeedScreen> with SingleTickerProviderStateM
     super.initState();
     // Inicializa o controlador com 2 abas.
     _tabController = TabController(length: 2, vsync: this);
+
+    // Carrega as publicações da API ao abrir a tela
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Provider.of<AppState>(context, listen: false).fetchFeeds();
+    });
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
   }
 
   // ── Construção da interface visual ───────────────────────────
@@ -52,13 +64,13 @@ class _FeedScreenState extends State<FeedScreen> with SingleTickerProviderStateM
           ],
         ),
         actions: [
-          // ── Botão de logout (Mantido no topo) ────────────────
+          // ── Botão de logout ─────────────────────────────────
           IconButton(
             icon: const Icon(Icons.logout),
-            onPressed: () {
-              appState.logout();
-              Navigator.pushReplacement(
-                context,
+            onPressed: () async {
+              final nav = Navigator.of(context);
+              await appState.logout();
+              nav.pushReplacement(
                 MaterialPageRoute(builder: (context) => const LoginScreen()),
               );
             },
@@ -66,16 +78,22 @@ class _FeedScreenState extends State<FeedScreen> with SingleTickerProviderStateM
         ],
       ),
 
-      // ── Área de conteúdo (as duas abas) ─────────────────────
+      // ── Área de conteúdo (as duas abas com RefreshIndicator) ──
       body: TabBarView(
         controller: _tabController,
         children: [
-          _buildFeed(followingPosts),
-          _buildFeed(generalPosts),
+          _buildFeed(
+            followingPosts,
+            () => appState.fetchFollowingPosts(),
+          ),
+          _buildFeed(
+            generalPosts,
+            () => appState.fetchGeneralPosts(),
+          ),
         ],
       ),
 
-      // ── Botão para criar novo post ─────────────────
+      // ── Botão para criar novo post ───────────────────────────
       floatingActionButton: FloatingActionButton(
         onPressed: () {
           Navigator.push(
@@ -86,7 +104,7 @@ class _FeedScreenState extends State<FeedScreen> with SingleTickerProviderStateM
         child: const Icon(Icons.add),
       ),
 
-      // ── Barra de Navegação Inferior (Mobile Style) ──
+      // ── Barra de Navegação Inferior (Mobile Style) ───────────
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: 0, // Sempre na Home quando nesta tela
         selectedItemColor: Theme.of(context).colorScheme.primary,
@@ -102,7 +120,7 @@ class _FeedScreenState extends State<FeedScreen> with SingleTickerProviderStateM
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (context) => ProfileScreen(userId: appState.currentUser!.id),
+                  builder: (context) => ProfileScreen(userId: appState.currentUser!.login),
                 ),
               );
             }
@@ -117,42 +135,52 @@ class _FeedScreenState extends State<FeedScreen> with SingleTickerProviderStateM
     );
   }
 
-  // ── Método auxiliar: constrói a lista de posts ───────────────
-  Widget _buildFeed(List posts) {
-    if (posts.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.pets, // Ícone lúdico para remeter a animais/pássaro
-              size: 80,
-              color: Theme.of(context).colorScheme.primary.withOpacity(0.5),
+  // ── Método auxiliar: constrói a lista de posts com pull-to-refresh ─
+  Widget _buildFeed(List posts, Future<void> Function() onRefresh) {
+    return RefreshIndicator(
+      onRefresh: onRefresh,
+      child: posts.isEmpty
+          ? ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              children: [
+                SizedBox(
+                  height: MediaQuery.of(context).size.height * 0.6,
+                  child: Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.pets, // Ícone lúdico para remeter a animais/pássaro
+                          size: 80,
+                          color: Theme.of(context).colorScheme.primary.withOpacity(0.5),
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          'Nada por aqui ainda!',
+                          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Arraste para baixo para atualizar ou crie um post!',
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            )
+          : ListView.builder(
+              physics: const AlwaysScrollableScrollPhysics(),
+              itemCount: posts.length,
+              itemBuilder: (context, index) {
+                return PostCard(post: posts[index]);
+              },
             ),
-            const SizedBox(height: 16),
-            Text(
-              'Nada por aqui ainda!',
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                color: Theme.of(context).colorScheme.primary,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Que tal criar o primeiro post?',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    return ListView.builder(
-      itemCount: posts.length,
-      itemBuilder: (context, index) {
-        return PostCard(post: posts[index]);
-      },
     );
   }
 }

@@ -1,13 +1,14 @@
 // ============================================================
 // ARQUIVO: screens/create_post_screen.dart
-// FUNÇÃO: Tela para criar uma publicação ou responder a um post.
+// FUNÇÃO: Tela para criar uma publicação ou responder a um post
+//         enviando para a API (POST /posts ou POST /posts/{id}/replies).
 // ============================================================
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_state.dart';
 
-// StatefulWidget para gerenciar o estado do campo de texto.
+// StatefulWidget para gerenciar o estado do campo de texto e envio à API.
 class CreatePostScreen extends StatefulWidget {
   // ID do post original (se for uma resposta).
   final String? parentPostId;
@@ -22,16 +23,35 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   // Controlador do campo de texto.
   final _contentController = TextEditingController();
 
-  // ── Função: publicar post ────────────────────────────────────
-  void _submit() {
-    if (_contentController.text.trim().isEmpty) return;
+  // Estado de envio
+  bool _isLoading = false;
 
-    Provider.of<AppState>(context, listen: false).createPost(
-      _contentController.text,
+  // ── Função: publicar post ou resposta na API ─────────────────
+  Future<void> _submit() async {
+    final text = _contentController.text.trim();
+    if (text.isEmpty) return;
+
+    setState(() => _isLoading = true);
+
+    final appState = Provider.of<AppState>(context, listen: false);
+    final success = await appState.createPost(
+      text,
       parentPostId: widget.parentPostId,
     );
 
-    Navigator.pop(context);
+    if (!mounted) return;
+    setState(() => _isLoading = false);
+
+    if (success) {
+      Navigator.pop(context);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(appState.lastErrorMessage ?? 'Falha ao enviar postagem'),
+          backgroundColor: Colors.redAccent,
+        ),
+      );
+    }
   }
 
   // ── Construção da interface visual ───────────────────────────
@@ -42,10 +62,21 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       appBar: AppBar(
         title: Text(widget.parentPostId == null ? 'Nova Postagem' : 'Responder Post'),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.send),
-            onPressed: _submit,
-          ),
+          _isLoading
+              ? const Center(
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 16.0),
+                    child: SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  ),
+                )
+              : IconButton(
+                  icon: const Icon(Icons.send),
+                  onPressed: _submit,
+                ),
         ],
       ),
 
@@ -55,8 +86,12 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         child: TextField(
           controller: _contentController,
           maxLines: 10,
-          decoration: const InputDecoration(
-            hintText: 'O que está acontecendo?',
+          autofocus: true,
+          decoration: InputDecoration(
+            hintText: widget.parentPostId == null
+                ? 'O que está acontecendo?'
+                : 'Escreva sua resposta...',
+            border: InputBorder.none,
           ),
         ),
       ),

@@ -1,6 +1,6 @@
 // ============================================================
 // ARQUIVO: screens/register_screen.dart
-// FUNÇÃO: Tela de cadastro de novos usuários.
+// FUNÇÃO: Tela de cadastro de novos usuários integrada à API.
 // ============================================================
 
 import 'package:flutter/material.dart';
@@ -23,8 +23,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _passwordController        = TextEditingController();
   final _confirmPasswordController = TextEditingController();
 
+  // Estado de carregamento da requisição
+  bool _isLoading = false;
+
   // ── Função de cadastro ───────────────────────────────────────
-  void _register() {
+  Future<void> _register() async {
     // ── Validação: as senhas devem ser iguais ─────────────────
     if (_passwordController.text != _confirmPasswordController.text) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -34,19 +37,28 @@ class _RegisterScreenState extends State<RegisterScreen> {
     }
 
     // ── Validação: campos obrigatórios não podem estar vazios ─
-    if (_nameController.text.isEmpty || _usernameController.text.isEmpty) {
+    if (_nameController.text.trim().isEmpty ||
+        _usernameController.text.trim().isEmpty ||
+        _passwordController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Preencha todos os campos')),
       );
       return;
     }
 
-    // Realiza o cadastro.
-    final success = Provider.of<AppState>(context, listen: false).register(
-      _nameController.text,
-      _usernameController.text,
+    setState(() => _isLoading = true);
+
+    // Realiza o cadastro e login na API.
+    final appState = Provider.of<AppState>(context, listen: false);
+    final success = await appState.register(
+      _nameController.text.trim(),
+      _usernameController.text.trim(),
       _passwordController.text,
+      passwordConfirmation: _confirmPasswordController.text,
     );
+
+    if (!mounted) return;
+    setState(() => _isLoading = false);
 
     if (success) {
       // Sucesso: Vai para o feed e limpa histórico de navegação.
@@ -56,9 +68,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
         (route) => false,
       );
     } else {
-      // Erro: Login indisponível.
+      // Erro: Exibe mensagem retornada pelo servidor (ex: login já em uso).
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Login já em uso')),
+        SnackBar(
+          content: Text(appState.lastErrorMessage ?? 'Falha ao cadastrar. Tente outro login.'),
+          backgroundColor: Colors.redAccent,
+        ),
       );
     }
   }
@@ -117,8 +132,17 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
             // ── Botão Cadastrar ──────────────────────────────────
             ElevatedButton(
-              onPressed: _register,
-              child: const Text('Cadastrar'),
+              onPressed: _isLoading ? null : _register,
+              child: _isLoading
+                  ? const SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Text('Cadastrar'),
             ),
           ],
         ),
