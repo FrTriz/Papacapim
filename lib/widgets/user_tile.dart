@@ -1,12 +1,11 @@
 // ============================================================
 // ARQUIVO: widgets/user_tile.dart
-// FUNÇÃO: Widget de item de lista para exibir um usuário (ex: na busca).
+// FUNÇÃO: Widget de item de lista para exibir um usuário na busca
+//         com botão de seguir/deixar de seguir integrado à API.
 // ============================================================
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'dart:io';
-
 import '../models/user.dart';
 import '../providers/app_state.dart';
 import '../screens/profile_screen.dart';
@@ -23,19 +22,18 @@ class UserTile extends StatelessWidget {
     final appState = Provider.of<AppState>(context);
     
     // Verifica se é o próprio usuário para ocultar o botão de seguir.
-    final isMe = appState.currentUser?.id == user.id;
+    final isMe = appState.currentUser?.login == user.login ||
+                 appState.currentUser?.id == user.login;
 
     // Verifica se já segue este usuário.
-    final isFollowing = appState.isFollowing(user.id);
+    final isFollowing = user.youFollow || appState.isFollowing(user.login);
 
     // Componente de lista padrão do Flutter.
     return ListTile(
       // ── Avatar ───────────────────────────────
       leading: CircleAvatar(
         // Verifica se a imagem é URL da web ou arquivo local.
-        backgroundImage: user.profileImage.startsWith('http')
-            ? NetworkImage(user.profileImage)
-            : FileImage(File(user.profileImage)) as ImageProvider,
+        backgroundImage: user.avatarProvider,
       ),
 
       // ── Nome e username ────────────────────
@@ -50,11 +48,11 @@ class UserTile extends StatelessWidget {
         ),
       ),
 
-      // ── Botão Seguir/Deixar de Seguir ──
+      // ── Botão Seguir/Deixar de Seguir (POST /users/{login}/followers e DELETE /users/{login}/followers/me) ──
       trailing: !isMe
           ? TextButton(
               onPressed: () {
-                appState.toggleFollow(user.id);
+                appState.toggleFollow(user.login);
               },
               child: Text(isFollowing ? 'Deixar de Seguir' : 'Seguir'),
             )
@@ -65,7 +63,7 @@ class UserTile extends StatelessWidget {
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (context) => ProfileScreen(userId: user.id),
+            builder: (context) => ProfileScreen(userId: user.login),
           ),
         );
       },

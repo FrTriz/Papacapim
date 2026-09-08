@@ -1,12 +1,11 @@
 // ============================================================
 // ARQUIVO: widgets/post_card.dart
-// FUNÇÃO: Widget de exibição de um post no feed.
+// FUNÇÃO: Widget de exibição de um post no feed com ações
+//         de curtir, responder e excluir integradas à API.
 // ============================================================
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'dart:io';
-
 import '../models/post.dart';
 import '../models/user.dart';
 import '../providers/app_state.dart';
@@ -22,14 +21,39 @@ class PostCard extends StatelessWidget {
 
   const PostCard({super.key, required this.post});
 
+  // ── Confirmação de exclusão do post ──────────────────────────
+  void _confirmDelete(BuildContext context, AppState appState) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Excluir Postagem'),
+        content: const Text('Deseja realmente apagar esta publicação do servidor?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancelar'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              appState.deletePost(post.id);
+            },
+            child: const Text('Excluir', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final appState = Provider.of<AppState>(context);
     
     // Obtém dados do autor e verifica o estado do post.
-    final user    = appState.getUserById(post.userId);
-    final isMe    = appState.currentUser?.id == post.userId;
-    final isLiked = appState.isLiked(post.id);
+    final user    = post.author ?? appState.getUserById(post.userId);
+    final isMe    = appState.currentUser?.login == user.login ||
+                    appState.currentUser?.id == user.login;
+    final isLiked = post.youLiked || appState.isLiked(post.id);
 
     // Cartão macio para cada post (sem margens laterais no feed dá mais cara de mobile)
     return Card(
@@ -48,14 +72,12 @@ class PostCard extends StatelessWidget {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (context) => ProfileScreen(userId: user.id),
+                        builder: (context) => ProfileScreen(userId: user.login),
                       ),
                     );
                   },
                   child: CircleAvatar(
-                    backgroundImage: user.profileImage.startsWith('http')
-                        ? NetworkImage(user.profileImage)
-                        : FileImage(File(user.profileImage)) as ImageProvider,
+                    backgroundImage: user.avatarProvider,
                   ),
                 ),
 
@@ -80,39 +102,27 @@ class PostCard extends StatelessWidget {
                       if (post.parentPostId != null)
                         Builder(
                           builder: (context) {
-                            final parentPost = appState.getPostById(post.parentPostId!);
-                            String? repliedToUsername;
-                            if (parentPost != null) {
-                              try {
-                                repliedToUsername = appState.getUserById(parentPost.userId).username;
-                              } catch (e) {
-                                // Usuário não encontrado
-                              }
-                            }
-                            if (repliedToUsername != null) {
-                              return Padding(
-                                padding: const EdgeInsets.only(top: 2.0),
-                                child: GestureDetector(
-                                  onTap: () {
-                                    Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder: (context) => PostDetailScreen(postId: parentPost!.id),
-                                      ),
-                                    );
-                                  },
-                                  child: Text(
-                                    'Em resposta a @$repliedToUsername',
-                                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                      color: Theme.of(context).colorScheme.primary,
-                                      fontStyle: FontStyle.italic,
-                                      fontWeight: FontWeight.bold,
+                            return Padding(
+                              padding: const EdgeInsets.only(top: 2.0),
+                              child: GestureDetector(
+                                onTap: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) => PostDetailScreen(postId: post.parentPostId!),
                                     ),
+                                  );
+                                },
+                                child: Text(
+                                  'Em resposta a post #${post.parentPostId}',
+                                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    color: Theme.of(context).colorScheme.primary,
+                                    fontStyle: FontStyle.italic,
+                                    fontWeight: FontWeight.bold,
                                   ),
                                 ),
-                              );
-                            }
-                            return const SizedBox.shrink();
+                              ),
+                            );
                           }
                         ),
                     ],
@@ -123,9 +133,7 @@ class PostCard extends StatelessWidget {
                 if (isMe)
                   IconButton(
                     icon: const Icon(Icons.delete_outline, color: AppTheme.softCoral),
-                    onPressed: () {
-                      appState.deletePost(post.id);
-                    },
+                    onPressed: () => _confirmDelete(context, appState),
                   ),
               ],
             ),
@@ -143,7 +151,7 @@ class PostCard extends StatelessWidget {
             // ── Interações (Curtir e Responder) ──
             Row(
               children: [
-                // Botão de curtir
+                // Botão de curtir (POST /posts/{id}/likes e DELETE /posts/{id}/likes/me)
                 IconButton(
                   icon: Icon(
                     isLiked ? Icons.favorite : Icons.favorite_border,
@@ -157,7 +165,7 @@ class PostCard extends StatelessWidget {
 
                 const SizedBox(width: 16),
 
-                // Botão de responder
+                // Botão de responder (POST /posts/{id}/replies)
                 IconButton(
                   icon: Icon(Icons.chat_bubble_outline, color: Theme.of(context).colorScheme.primary),
                   onPressed: () {
@@ -170,10 +178,20 @@ class PostCard extends StatelessWidget {
                   },
                 ),
 
-                Text(
-                  'Responder',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: Theme.of(context).colorScheme.primary,
+                GestureDetector(
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => PostDetailScreen(postId: post.id),
+                      ),
+                    );
+                  },
+                  child: Text(
+                    post.repliesCount > 0 ? '${post.repliesCount} respostas' : 'Responder',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
                   ),
                 ),
               ],
