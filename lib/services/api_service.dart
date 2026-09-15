@@ -197,7 +197,6 @@ class ApiService {
       userMap['password_confirmation'] = passwordConfirmation ?? password;
     }
     if (imageDataBase64 != null && imageDataBase64.isNotEmpty) {
-      // A doc oficial da API usa a chave "image_data" (não "profile_image").
       userMap['image_data'] = imageDataBase64;
     }
 
